@@ -1,5 +1,44 @@
-Revision history for Perl extension DBI::CGI.
+Revision history for Perl module DBIx::CGI.
 
-0.01  Wed Feb  3 15:02:37 1999 
+* Tue Aug  3 00:47:18 1999
+
+DBIx::CGI v0.02 released.
+
+* Fri Jul  9 12:03:18 1999
+
+fix for mysql to read tables
+
+* Thu Apr 22 13:07:08 1999
+
+(serial, insert, now): support for mysql added
+(insert): scalar references protect values from quoting
+(connect): use fatal handler instead of die
+synopsis documentation fixed
+
+* Wed Mar 10 13:06:24 1999
+set AutoCommit to off only if database supports transactions
+
+* Wed Mar  9 12:35:34 1999
+(commit): new method
+USER can now specified
+
+* Fri Mar  5 15:30:10 1999
+
+(money2num): new method
+
+* Tue Feb 23 13:36:28 1999
+
+(insert): don't quote integer values
+(now): new method.
+Bugs in example code fixed.
+
+* Thu Feb 17 14:29:22 1999 
+
+Default installation directory for manual pages now /usr/man/man3.
+
+* Wed Feb  3 15:02:37 1999 
+
+DBIx::CGI v0.01 released.
+
 
 

@@ -4,7 +4,7 @@
 
 # Author: Stefan Hornburg <racke@linuxia.de>
 # Maintainer: Stefan Hornburg <racke@linuxia.de>
-# Version: 0.01
+# Version: 0.02
 
 # This file is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
@@ -34,9 +34,9 @@ require AutoLoader;
 # Do not simply export all your public functions/methods/constants.
 @EXPORT = qw(
 );
-$VERSION = '0.01';
+$VERSION = '0.02';
 
- use DBI;
+use DBI;
 
 =head1 NAME
 
@@ -45,21 +45,25 @@ DBIx::CGI - Easy to Use DBI interface for CGI scripts
 =head1 SYNOPSIS
 
   use CGI;
-  $cgi = new CGI;
+  my $cgi = new CGI;
   use DBIx::CGI;
-  $dbi_interface = new DBIx::CGI ($cgi qw(Pq template1));
+  my $dbi_interface = new DBIx::CGI ($cgi, qw(Pg template1));
+
+  $dbi_interface -> insert ('transaction',
+                   id => serial ('transaction', 'transactionid'),
+                   time => \$dbi_interface -> now);
 
 =head1 DESCRIPTION
 
 DBIx::CGI is an easy to use DBI interface for CGI scripts.
-Currently only the Pg and mSQL drivers are supported.
+Currently only the Pg, mSQL and mysql drivers are supported.
 
 =head1 CREATING A NEW DBI INTERFACE OBJECT
 
-  $dbi_interface = new DBIx::CGI ($cgi qw(Pq template1));
+  $dbi_interface = new DBIx::CGI ($cgi qw(Pg template1));
 
 The required parameters are a L<CGI> object, the database driver
-and the database name.
+and the database name. Additional parameters are the database user.
 
 =head1 ERROR HANDLING
 
@@ -81,14 +85,27 @@ called.
 my $maintainer_adr = 'racke@linuxia.de';
 
 # Keywords for connect()
-my %kwmap = (mSQL => 'database', Pg => 'dbname');
+my %kwmap = (mSQL => 'database', mysql => 'database', Pg => 'dbname');
 
+# Whether the DBMS supports transactions
+my %transactmap = (mSQL => 0, mysql => 0, Pg => 1);
+  
 # Statement generators for serial()
 my %serialstatmap = (mSQL => sub {"SELECT _seq FROM $_[0]";},
 					 Pg => sub {"SELECT NEXTVAL ('$_[1]')";});
 
+# Statement for obtaining the table structure
+my %obtstatmap = (mSQL => sub {my $table = shift;
+							   "SELECT " . join (', ', @_) . " FROM $table";},
+				  mysql => sub {my $table = shift;
+							   "SELECT " . join (', ', @_) . " FROM $table";},
+				  Pg => sub {my $table = shift;
+							 "SELECT " . join (', ', @_)
+							   . " FROM $table WHERE FALSE";});
+  
 # Supported functions
 my %funcmap = (mSQL => {COUNT => 0},
+			   mysql => {COUNT => 1},
 			   Pg => {COUNT => 1});
 
 # Preloaded methods go here.
@@ -100,7 +117,7 @@ sub new ($$)
 	my $self = {};
 
 	# we need three parameters
-	if ($#_ != 2)
+	if ($#_ <= 2 && $#_ >= 3)
 	  {
 		die (__PACKAGE__, ": Wrong number of parameters.\n");
 	  }
@@ -108,6 +125,8 @@ sub new ($$)
 	$self ->{CGI} = shift;
 	$self ->{DRIVER} = shift;
 	$self ->{DATABASE} = shift;
+	$self ->{USER} = shift;
+	
 	$self ->{CONN} = undef;
 	$self ->{HANDLER} = undef;		# error handler
 
@@ -143,14 +162,29 @@ sub DESTROY
 sub fatal
   {
 	my $self = shift;
+	my $err = '';
+	my $errstr = '';
 
+	if (defined $self -> {CONN})
+	  {
+		$err = $DBI::err;
+		$errstr = $DBI::errstr;
+		
+		# something has gone wrong, rollback anything
+		$self -> {CONN} -> rollback ();
+	  }
+	
 	if (defined $self -> {'HANDLER'})
 	  {
-		&{$self -> {'HANDLER'}} ("@_", $DBI::err, $DBI::errstr);
+		&{$self -> {'HANDLER'}} ("@_", $err, $errstr);
+	  }
+	elsif (defined $self -> {CONN})
+	  {
+		die @_, " (DBERR: $err, DBMSG: $errstr)\n";
 	  }
 	else
 	  {
-		die @_, " (DBERR: $DBI::err, DBMSG: $DBI::errstr)\n";
+		die @_, "\n";
 	  }
   }
 
@@ -167,14 +201,17 @@ sub connect ()
 	
 	unless (defined $self -> {CONN})
 	  {
-	    $self -> {CONN} = DBI -> connect ("dbi:" . $self -> {DRIVER}
-								. ":" . $kwmap{$self -> {DRIVER}} . "="
-										  . $self -> {DATABASE});
+	    $self -> {CONN} = DBI
+		  -> connect ("dbi:" . $self -> {DRIVER}
+					  . ":" . $kwmap{$self -> {DRIVER}} . "="
+					  . $self -> {DATABASE},
+					  $self -> {USER}, '',
+					  {AutoCommit => !$transactmap{$self->{DRIVER}}});
 		unless (defined $self -> {CONN})
 		  {
 			# print error message in any case
-			die "Connection to database \"" . $self -> {DATABASE}
-			  . "\" couldn't be established (DBERR: $DBI::err, DBMSG: $DBI::errstr)\n";
+			$self -> fatal ("Connection to database \"" . $self -> {DATABASE}
+			  . "\" couldn't be established");
 		  }
 	  }
 
@@ -193,7 +230,7 @@ sub connect ()
 
 =item process I<statement>
 
-  $sth = process ("SELECT * FROM foo");
+  $sth = $dbi_interface -> process ("SELECT * FROM foo");
   print "Table foo contains ", $sth -> rows, " rows.\n";
 
 Processes I<statement> by just combining the I<prepare> and I<execute>
@@ -229,7 +266,11 @@ sub process
 
 =item insert I<table> I<column> I<value> [I<column> I<value>] ...
 
-Inserts the given I<column>/I<value> pairs into I<table>.
+  $sth = $dbi_interface -> insert ('bar', drink => 'Caipirinha');
+
+Inserts the given I<column>/I<value> pairs into I<table>. Determines from the
+SQL data type which values has to been quoted. Just pass a reference to
+the value to protect values with SQL functions from quoting.
 
 =back
 
@@ -240,18 +281,38 @@ sub insert ($$$;@)
 	my $self = shift;
 	my $table = shift;
 	my (@columns, @values);
-	my ($statement);
+	my ($statement, $sthtest, $flags);
 	my ($column, $value);
 
 	$self -> connect ();
-	
+
 	while ($#_ >= 0)
 	  {
 		$column = shift; $value = shift;
 		push (@columns, $column);
-		push (@values, "'$value'");
+		push (@values, $value);
 	  }
 
+	# get the table structure
+	$sthtest = $self -> process
+	  (&{$obtstatmap{$self -> {'DRIVER'}}} ($table, @columns));
+	$flags = $sthtest -> {'TYPE'};
+
+	for (my $i = 0; $i <= $#values; $i++)
+	  {
+		if (ref ($values[$i]) eq 'SCALAR')
+		  {
+			$values[$i] = ${$values[$i]};
+		  }
+		else
+		  {
+			unless ($$flags[$i] == DBI::SQL_INTEGER)
+			  {
+				$values[$i] = $self -> quote ($values[$i]);
+			  }
+		  }
+	  }
+	
 	# now the statement
 	$statement = "INSERT INTO $table ("
 	  . join (', ', @columns) . ") VALUES ("
@@ -272,15 +333,16 @@ sub insert ($$$;@)
 
 =item update I<table> I<conditions> I<column> I<value> [I<column> I<value>] ...
 
-  $dbif -> update ('components', "table='ram'", price => 100);
+  $dbi_interface -> update ('components', "table='ram'", price => 100);
 
-Inserts the given I<column>/I<value> pairs into I<table>.
+Updates any row of I<table> which fulfill the I<conditions> by inserting the given
+I<column>/I<value> pairs. .
 
 =back
 
 =cut
 
-sub update ($$$;@)
+sub update
   {
 	my $self = shift;
 	my $table = shift;
@@ -315,8 +377,8 @@ sub update ($$$;@)
 
 =item rows I<table> [I<conditions>]
 
-  $components = $db_interface -> rows ('components');
-  $components_needed = $db_interface -> rows ('components', 'stock = 0');
+  $components = $dbi_interface -> rows ('components');
+  $components_needed = $dbi_interface -> rows ('components', 'stock = 0');
 
 Returns the number of rows within I<table> satisfying I<conditions> if any.
 
@@ -328,8 +390,9 @@ sub rows
   {
 	my $self = shift;
 	my ($table, $conditions) = @_;
-	my ($sth, $where, $aref, $rows);
-
+	my ($sth, $aref, $rows);
+	my $where = '';
+	
 	if (defined ($conditions))
 	  {
 		$where = " WHERE $conditions";
@@ -361,7 +424,10 @@ sub rows
 
 Returns a serial number for I<table> by querying the next value from
 I<sequence>. Depending on the DBMS one of the parameters is ignored.
-This is I<sequence> for mSQL resp. I<table> for PostgreSQL.
+This is I<sequence> for mSQL resp. I<table> for PostgreSQL. mysql
+doesn't support sequences, but the AUTO_INCREMENT keyword for fields.
+In this case this method returns 0 and mysql generates a serial
+number for this field.
 
 =back
 
@@ -374,6 +440,7 @@ sub serial
 	my ($statement, $sth, $rv, $resref);
 	
 	$self -> connect ();
+    return ('0') if $self->{DRIVER} eq 'mysql';
 
 	# get the appropriate statement
 	$statement = &{$serialstatmap{$self->{DRIVER}}};
@@ -411,7 +478,7 @@ are omitted.
 
 sub fill
   {
-	my ($dbif, $sth, $hashref, $flag, @columns) = @_;
+	my ($dbi_interface, $sth, $hashref, $flag, @columns) = @_;
 	my ($fetchref);
 
 	$fetchref = $sth -> fetchrow_hashref;
@@ -445,10 +512,10 @@ sub fill
 
 =item view I<table>
 
-  foreach my $table (sort $dbif -> tables)
+  foreach my $table (sort $dbi_interface -> tables)
     {
     print $cgi -> h2 ('Contents of ', $cgi -> code ($table));
-    print $dbif -> view ($table);
+    print $dbi_interface -> view ($table);
     }
 
 Produces HTML code for a table displaying the contents of the database table
@@ -483,19 +550,87 @@ sub view
 	$view;
 }
 
+# --------------------------------------------
+# METHOD: now
+#
+# Returns representation for the current time.
+# --------------------------------------------
+
+=head1 TIME VALUES
+
+=over 4
+
+=item now
+
+  $dbi_interface -> insert ('transaction',
+                   id => serial ('transaction', 'transactionid'),
+                   time => \$dbi_interface -> now);
+
+Returns representation for the current time. Uses special values of
+the DBMS if possible.
+
+=back
+
+=cut
+
+sub now
+  {
+	my $self = shift;
+
+    # Postgres and mysql have an special value for the current time
+    return 'now' if $self -> {'DRIVER'} eq 'Pg';
+	return 'now()' if $self -> {'DRIVER'} eq 'mysql';
+    # determine current time by yourself
+	scalar (gmtime ());
+  }
+
+# --------------------------------------------------
+# METHOD: money2num MONEY
+#
+# Converts the monetary value MONEY (e.g. $10.00) to
+# a numeric one.
+# --------------------------------------------------
+
+=head1 MONETARY VALUES
+
+=over 4
+
+=item money2num I<money>
+
+Converts the monetary value I<money> to a numeric one.
+
+=back
+
+=cut
+
+sub money2num
+  {
+	my ($self, $money) = @_;
+
+	# strip leading dollar sign
+	$money =~ s/\$//;
+	# remove commas
+	$money =~ s/,//g;
+	# ignore empty pennies
+	$money =~ s/\.00$//;
+	
+	$money;
+  }
+
 # install error handler
 sub install_handler {$_[0] -> {'HANDLER'} = $_[1];}
 
 # direct interface to DBI
 sub prepare {my $self = shift; $self -> prepare (@_);}
+sub commit {$_[0] -> connect () -> commit ();}
 sub quote {$_[0] -> connect () -> quote ($_[1]);}
 
 sub tables
   {
   my $self = shift;
 
-  # mSQL doesn't support DBI method tables yet
-  if ($self -> {DRIVER} eq 'mSQL')
+  # mSQL/mysql doesn't support DBI method tables yet
+  if ($self -> {DRIVER} eq 'mSQL' || $self -> {DRIVER} eq 'mysql')
 	{
 	  $self -> connect () -> func('_ListTables');
 	}

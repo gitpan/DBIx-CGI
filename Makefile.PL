@@ -4,4 +4,5 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     'NAME'	=> 'DBIx::CGI',
     'VERSION_FROM' => 'CGI.pm', # finds $VERSION
+    'INSTALLMAN3DIR' => '/usr/man/man3'
 );
