@@ -2,9 +2,9 @@
 
 # Copyright (C) 1999 Stefan Hornburg
 
-# Author: Stefan Hornburg <racke@linuxia.de>
-# Maintainer: Stefan Hornburg <racke@linuxia.de>
-# Version: 0.03
+# Author: Stefan Hornburg <racke@linuxia.net>
+# Maintainer: Stefan Hornburg <racke@linuxia.net>
+# Version: 0.04
 
 # This file is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
@@ -34,7 +34,7 @@ require AutoLoader;
 # Do not simply export all your public functions/methods/constants.
 @EXPORT = qw(
 );
-$VERSION = '0.03';
+$VERSION = '0.04';
 
 use DBI;
 
@@ -53,6 +53,8 @@ DBIx::CGI - Easy to Use DBI interface for CGI scripts
                    id => serial ('transaction', 'transactionid'),
                    time => \$dbi_interface -> now);
 
+  $dbi_interface -> update ('components', "table='ram'", price => 100);
+
 =head1 DESCRIPTION
 
 DBIx::CGI is an easy to use DBI interface for CGI scripts.
@@ -61,9 +63,14 @@ Currently only the Pg, mSQL and mysql drivers are supported.
 =head1 CREATING A NEW DBI INTERFACE OBJECT
 
   $dbi_interface = new DBIx::CGI ($cgi qw(Pg template1));
+  $dbi_interface = new DBIx::CGI ($cgi qw(Pg template1 racke));
+  $dbi_interface = new DBIx::CGI ($cgi qw(Pg template1 racke aF3xD4_i));
+  $dbi_interface = new DBIx::CGI ($cgi qw(Pg template1 racke@linuxia.net aF3xD4_i));
 
 The required parameters are a L<CGI> object, the database driver
-and the database name. Additional parameters are the database user.
+and the database name. Additional parameters are the database user
+and the password to access the database. To specify the database host
+use the USER@HOST notation for the user parameter.
 
 =head1 ERROR HANDLING
 
@@ -82,10 +89,11 @@ called.
 # Variables
 # =========
 
-my $maintainer_adr = 'racke@linuxia.de';
+my $maintainer_adr = 'racke@linuxia.net';
 
 # Keywords for connect()
 my %kwmap = (mSQL => 'database', mysql => 'database', Pg => 'dbname');
+my %kwhostmap = (mSQL => 'host', mysql => 'host', Pg => 'host');
 
 # Whether the DBMS supports transactions
 my %transactmap = (mSQL => 0, mysql => 0, Pg => 1);
@@ -126,7 +134,12 @@ sub new ($$)
 	$self ->{DRIVER} = shift;
 	$self ->{DATABASE} = shift;
 	$self ->{USER} = shift;
-	
+	# check for a host part
+	if ($self->{USER} =~ /@/) {
+	  $self->{HOST} = $';
+	  $self->{USER} = $`;
+	}
+    $self ->{PASS} = shift;
 	$self ->{CONN} = undef;
 	$self ->{HANDLER} = undef;		# error handler
 
@@ -198,15 +211,24 @@ sub fatal
 sub connect ()
   {
 	my $self = shift;
+	my $dsn;
 	
 	unless (defined $self -> {CONN})
 	  {
-	    $self -> {CONN} = DBI
-		  -> connect ("dbi:" . $self -> {DRIVER}
-					  . ":" . $kwmap{$self -> {DRIVER}} . "="
-					  . $self -> {DATABASE},
-					  $self -> {USER}, '',
-					  {AutoCommit => !$transactmap{$self->{DRIVER}}});
+		# build the data source string for DBI
+		# ... the driver name
+		$dsn .= 'dbi:' . $self -> {DRIVER} . ':';
+		# ... the database part
+		$dsn .= $kwmap{$self -> {DRIVER}} . "=" . $self -> {DATABASE};
+		# ... optionally the host part
+		if ($self -> {HOST}) {
+			$dsn .= ';' . $kwhostmap{$self->{DRIVER}}
+				. '=' . $self -> {HOST};
+		}
+
+		$self -> {CONN} = DBI
+            -> connect ($dsn, $self -> {USER}, $self -> {PASS},
+                        {AutoCommit => !$transactmap{$self->{DRIVER}}});
 		unless (defined $self -> {CONN})
 		  {
 			# print error message in any case
@@ -289,6 +311,8 @@ sub insert ($$$;@)
 	while ($#_ >= 0)
 	  {
 		$column = shift; $value = shift;
+        # avoid Perl warning
+        unless (defined $value) {$value = 'NULL';}
 		push (@columns, $column);
 		push (@values, $value);
 	  }
@@ -326,7 +350,9 @@ sub insert ($$$;@)
 # ---------------------------------------------------------------
 # METHOD: update TABLE CONDITIONS COLUMN VALUE [COLUMN VALUE] ...
 #
-# Inserts the given COLUMN/VALUE pairs into TABLE.
+# Updates the rows matching CONDITIONS with the given
+# COLUMN/VALUE pairs and returns the number of the
+# modified rows.    
 # ---------------------------------------------------------------
 
 =over 4
@@ -335,8 +361,7 @@ sub insert ($$$;@)
 
   $dbi_interface -> update ('components', "table='ram'", price => 100);
 
-Updates any row of I<table> which fulfill the I<conditions> by inserting the given
-I<column>/I<value> pairs. .
+Updates any row of I<table> which fulfill the I<conditions> by inserting the given I<column>/I<value> pairs. Returns the number of rows modified.
 
 =back
 
@@ -348,7 +373,7 @@ sub update
 	my $table = shift;
 	my $conditions = shift;
 	my (@columns);
-	my ($statement);
+	my ($statement, $rv);
 	my ($column, $value);
 
 	# ensure that connection is established
@@ -357,7 +382,9 @@ sub update
 	while ($#_ >= 0)
 	  {
 		$column = shift; $value = shift;
-		push (@columns, $column . ' = ' . "'$value'");
+        # avoid Perl warning
+        unless (defined $value) {$value = 'NULL';}
+		push (@columns, $column . ' = ' . $self -> {CONN} -> quote ($value));
 	  }
 
 	# now the statement
@@ -365,9 +392,14 @@ sub update
 	  . join (', ', @columns) . " WHERE $conditions";
 
 	# process it
-	$self -> {CONN} -> do ($statement)
-	  || $self -> fatal ("Couldn't execute statement \"$statement\"");
-  }
+	$rv = $self -> {CONN} -> do ($statement);
+    if (defined $rv) {
+        # return the number of rows changed
+        $rv;
+    } else {
+        $self -> fatal ("Couldn't execute statement \"$statement\"");
+    }
+}
 
 # -------------------------------
 # METHOD: rows TABLE [CONDITIONS]
@@ -676,7 +708,7 @@ __END__
 
 =head1 AUTHOR
 
-Stefan Hornburg, racke@linuxia.de
+Stefan Hornburg, racke@linuxia.net
 
 =head1 SEE ALSO
 

@@ -1,5 +1,21 @@
 Revision history for Perl module DBIx::CGI.
 
++ Sun Sep 26 03:30:37 1999
+
+DBIx::CGI v0.04 released
+(updatedb.pl): new file
+allow the USER@NAME notation for the user parameter
+(update): use the DBI quote function
+
++ Thu Sep  9 04:22:35 1999 
+password can be passed to the constructor
+(update, insert): avoid Perl warning on undefined values
+(update): don't deference number anymore
+
++ Fri Aug 13 00:09:19 1999
+
+(update): returns number of modified rows
+
 + Thu Aug 12 18:42:59 1999
 
 DBIx::CGI v0.03 released.
