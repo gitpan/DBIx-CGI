@@ -1,0 +1,9 @@
+dbix-cgi-perl (0.06-1) unstable; urgency=low
+
+  * Initial Release.
+
+ -- Dennis Schoen <dschoen@rio.gt.owl.de>  Thu, 25 Nov 1999 21:30:21 +0100
+
+Local variables:
+mode: debian-changelog
+End:

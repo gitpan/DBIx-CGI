@@ -2,12 +2,12 @@
 
 # dausql - Display Database Tables on the Localhost
 
-# Copyright (C) 1999 Stefan Hornburg
+# Copyright (C) 1999 Stefan Hornburg and Dennis Schön
 
 # Authors: Stefan Hornburg <racke@linuxia.net>
 #          Dennis Schön <dschoen@rio.gt.owl.de>
 # Maintainer: Stefan Hornburg <racke@linuxia.net>
-# Version: 0.05
+# Version: 0.06
 
 # This file is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
@@ -62,6 +62,7 @@ elsif ($cgi -> param ('display') && ($cgi -> param ('routine') eq 'View')) {
 				$cgi -> param ('order'))};
 }
 elsif ($cgi -> param ('display') && ($cgi -> param ('routine') eq 'Edit')) {
+	$editfunc = sub { edit_disp_table ()};
 }
 else {
   $formfunc = sub { form_drivers ()};
@@ -71,11 +72,11 @@ else {
 
 # DISPLAY HTML PAGE
 print $cgi -> header ();
-print $cgi -> start_html ('-title' => "dausql 0.05",
-                          '-author' => 'racke@linuxia.net');
+print $cgi -> start_html ('-title' => "dausql 0.06",
+                          '-author' => 'racke@linuxia.net and dschoen@rio.gt.owl.de');
 print $cgi -> start_form ();
 print $cgi -> start_table ();
-&$formfunc;
+&$formfunc if $formfunc;
 print $cgi -> end_table ();
 &$editfunc if $editfunc;
 &$dispfunc if $dispfunc;
@@ -103,7 +104,7 @@ sub form_drivers
   {
     my @drivers;
     foreach my $i (DBI->available_drivers) {
-      if (grep(/$i/, @supported_drivers))  {push(@drivers,$i)}
+      if (grep {$_ eq $i} @supported_drivers)  {push(@drivers,$i)}
     }
     print $cgi -> hidden (-name=>'drivers',
 			  -value=>\@drivers);  
@@ -290,8 +291,9 @@ sub disp_table
     @orders = @{$tbh -> {NAME}};
     
     if ($order) {
-      if (grep(!/$order/,@orders)) {$order = undef}
+      unless (grep {$_ eq $order} @orders) {$order = undef}
     }
+    
     print $cgi -> row ("Order by:",
 		       $cgi -> popup_menu (-name=>'order',
 					    -value=>\@orders));
@@ -304,6 +306,23 @@ sub disp_table
 
 # EDIT ROUTINES
 
+# ----------------------------------
+# FUNCTION: edit_disp_table
+#
+# Display and edit the table entries 
+# ----------------------------------
+
+sub edit_disp_table {
+print <<'EOF';
+Sorry, Edit routines not yet implemented.<BR>
+If you're interested, put code in dausql.pl line 316 and mail patches to Stefan Hornburg <A HREF="mailto:racke@linuxia.net">&lt;racke@linuxia.net&gt</A> 
+and Dennis Sch&ouml;n
+<A HREF="mailto:dschoen@rio.gt.owl.de">&lt;dschoen@rio.gt.owl.de&gt;</A><BR>
+<HR>
+&copy; 1999 by Stefan Hornburg and Dennis Sch&ouml;n
+EOF
+exit;
+}
 
 
 
@@ -318,6 +337,6 @@ sub disp_table
 
 sub dbi_fatal {
   my ($statement, $err, $msg) = @_;
-  print "<PRE>$statement</PRE>\n";
+  print "<PRE>$statement\n<BR>$msg</PRE>\n";
   exit;
 }

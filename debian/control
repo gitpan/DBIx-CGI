@@ -1,0 +1,13 @@
+Source: dbix-cgi-perl
+Section: interpreters
+Priority: optional
+Maintainer: Dennis Schoen <dschoen@rio.gt.owl.de>
+Standards-Version: 3.0.1
+
+Package: libdbix-cgi-perl
+Architecture: all
+Depends: ${perl:Depends}, libwww-perl (<= 5.32-1) | libhtml-parser-perl, libdbix-easy-perl, libcgi-extratags-perl, libdbi-perl
+Description: CGI Extension for libdbix-easy-perl
+ This package adds several CGI methods to libdbix-easy-perl, it
+ also contains a example script called dausql.pl for accessing databases
+ from a browser.
