@@ -4,7 +4,7 @@
 
 # Author: Stefan Hornburg <racke@linuxia.de>
 # Maintainer: Stefan Hornburg <racke@linuxia.de>
-# Version: 0.02
+# Version: 0.03
 
 # This file is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
@@ -34,7 +34,7 @@ require AutoLoader;
 # Do not simply export all your public functions/methods/constants.
 @EXPORT = qw(
 );
-$VERSION = '0.02';
+$VERSION = '0.03';
 
 use DBI;
 
@@ -510,7 +510,7 @@ sub fill
 
 =over 4
 
-=item view I<table>
+=item view I<table> [I<name> I<value> ...]
 
   foreach my $table (sort $dbi_interface -> tables)
     {
@@ -519,7 +519,17 @@ sub fill
     }
 
 Produces HTML code for a table displaying the contents of the database table
-I<table>. 
+I<table>. This method accepts the following options as I<name>/I<value>
+pairs:
+
+B<order>: Which column to sort the row after.
+B<column_link>: URI for the column names. A %s will be replaced by the
+column name.
+
+  print $dbi_interface -> view ($table,
+                                order => $cgi -> param ('order') || '',
+                                column_link => $cgi->url()
+                                . "&order=%s");
 
 =back
 
@@ -527,16 +537,34 @@ I<table>.
 
 sub view
   {
-	my ($self, $table) = @_;
+	my ($self, $table, %options) = @_;
 	my ($view, $sth, $aref);
+    my ($colsub);
 
+    # anonymous function for cells in top row
+    $colsub = sub {
+        my $colname = shift;
+        my $dispname;
+
+        if (exists($options{column_link}) && $options{column_link}) {
+            $dispname = $self -> {CGI}
+                -> a ({href => sprintf ($options{column_link}, $colname)}, $colname);
+        } else {
+            $dispname = $colname;
+        }
+        $self -> {CGI} -> td ($dispname);
+    };
 	# get contents of the table
-	$sth = $self -> process ("SELECT * FROM $table");
+    if (exists ($options{'order'}) && $options{'order'}) {
+	    $sth = $self -> process ("SELECT * FROM $table ORDER BY $options{'order'}");
+    } else {
+	    $sth = $self -> process ("SELECT * FROM $table");
+    }
 	
 	$view .= "<TABLE BORDER>\n";
 	# Field Names
 	$view .= $self -> {CGI}
-	  -> Tr (map {$self -> {CGI} -> td ($_)} @{$sth->{NAME}});
+	  -> Tr (map {&$colsub ($_)} @{$sth->{NAME}});
 	
 	while ($aref = $sth -> fetch)
 	  {

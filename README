@@ -2,13 +2,14 @@ DBIx::CGI - Easy to Use DBI Interface for CGI Scripts
 *****************************************************
 
    * The homepage of `DBIx::CGI' is http://www.linuxia.de/DBIx/CGI/.
-   * The latest version (currently 0.02) is always available as 
+   * The latest version (currently 0.03) is always available as 
      http://www.linuxia.de/DBIx/CGI/DBIx-CGI.tar.gz.
 
 Requirements
 ************
 
    * DBI (URL: http://www.symbolstone.org/technology/perl/DBI/index.html)
+   * `DBD::Pg', `DBD::mysql' or `DBD::mSQL' (ask for other database drivers)
    * CGI (URL: http://stein.cshl.org/WWW/software/CGI/)
 
 Installation
@@ -16,7 +17,7 @@ Installation
 
 
 tar -xzf DBIx-CGI.tar.gz
-cd DBIx-CGI-0.02
+cd DBIx-CGI-0.03
 perl Makefile.PL
 make
 make install
