@@ -4,7 +4,7 @@
 
 # Author: Stefan Hornburg <racke@linuxia.net>
 # Maintainer: Stefan Hornburg <racke@linuxia.net>
-# Version: 0.04
+# Version: 0.05
 
 # This file is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
@@ -34,9 +34,10 @@ require AutoLoader;
 # Do not simply export all your public functions/methods/constants.
 @EXPORT = qw(
 );
-$VERSION = '0.04';
+$VERSION = '0.05';
 
 use DBI;
+use HTML::Entities;
 
 =head1 NAME
 
@@ -54,6 +55,9 @@ DBIx::CGI - Easy to Use DBI interface for CGI scripts
                    time => \$dbi_interface -> now);
 
   $dbi_interface -> update ('components', "table='ram'", price => 100);
+  $dbi_interface -> makemap ('components', 'id', 'price');
+  $components = $dbi_interface -> rows ('components');
+  $components_needed = $dbi_interface -> rows ('components', 'stock = 0');
 
 =head1 DESCRIPTION
 
@@ -104,9 +108,11 @@ my %serialstatmap = (mSQL => sub {"SELECT _seq FROM $_[0]";},
 
 # Statement for obtaining the table structure
 my %obtstatmap = (mSQL => sub {my $table = shift;
-							   "SELECT " . join (', ', @_) . " FROM $table";},
+							   "SELECT " . join (', ', @_)
+                                 . " FROM $table WHERE 0 = 1";},
 				  mysql => sub {my $table = shift;
-							   "SELECT " . join (', ', @_) . " FROM $table";},
+							   "SELECT " . join (', ', @_)
+                                 . " FROM $table WHERE 0 = 1";},
 				  Pg => sub {my $table = shift;
 							 "SELECT " . join (', ', @_)
 							   . " FROM $table WHERE FALSE";});
@@ -135,7 +141,7 @@ sub new ($$)
 	$self ->{DATABASE} = shift;
 	$self ->{USER} = shift;
 	# check for a host part
-	if ($self->{USER} =~ /@/) {
+	if (defined $self->{USER} && $self->{USER} =~ /@/) {
 	  $self->{HOST} = $';
 	  $self->{USER} = $`;
 	}
@@ -156,15 +162,23 @@ sub new ($$)
 	return ($self);
   }
 
-sub DESTROY
-  {
+# ------------------------------------------------------
+# DESTRUCTOR
+#
+# If called for an object with established connection we
+# commit any changes.
+# ------------------------------------------------------
+
+sub DESTROY {
 	my $self = shift;
 
-	if (defined ($self -> {CONN}))
-	  {
-		$self -> {CONN} -> disconnect ();
-	  }
-  }
+	if (defined ($self -> {CONN})) {
+        unless ($self -> {CONN} -> {AutoCommit}) {
+            $self -> {CONN} -> commit;
+        }
+	    $self -> {CONN} -> disconnect;
+    }
+}
 
 # ------------------------------
 # METHOD: fatal
@@ -311,8 +325,6 @@ sub insert ($$$;@)
 	while ($#_ >= 0)
 	  {
 		$column = shift; $value = shift;
-        # avoid Perl warning
-        unless (defined $value) {$value = 'NULL';}
 		push (@columns, $column);
 		push (@values, $value);
 	  }
@@ -321,21 +333,21 @@ sub insert ($$$;@)
 	$sthtest = $self -> process
 	  (&{$obtstatmap{$self -> {'DRIVER'}}} ($table, @columns));
 	$flags = $sthtest -> {'TYPE'};
-
-	for (my $i = 0; $i <= $#values; $i++)
-	  {
-		if (ref ($values[$i]) eq 'SCALAR')
-		  {
+    $sthtest -> finish ();
+    
+	for (my $i = 0; $i <= $#values; $i++) {
+        if (ref ($values[$i]) eq 'SCALAR') {
 			$values[$i] = ${$values[$i]};
-		  }
-		else
-		  {
-			unless ($$flags[$i] == DBI::SQL_INTEGER)
-			  {
-				$values[$i] = $self -> quote ($values[$i]);
-			  }
-		  }
-	  }
+        }
+        elsif (defined $values[$i]) {
+			unless ($$flags[$i] == DBI::SQL_INTEGER) {
+                $values[$i] = $self -> quote ($values[$i]);
+            }
+        }
+        else {
+            $values[$i] = 'NULL';
+        }
+    }
 	
 	# now the statement
 	$statement = "INSERT INTO $table ("
@@ -383,8 +395,12 @@ sub update
 	  {
 		$column = shift; $value = shift;
         # avoid Perl warning
-        unless (defined $value) {$value = 'NULL';}
-		push (@columns, $column . ' = ' . $self -> {CONN} -> quote ($value));
+        if (defined $value) {
+            $value = $self -> {CONN} -> quote ($value);
+        } else {
+            $value = 'NULL';
+        }
+		push (@columns, $column . ' = ' . $value);
 	  }
 
 	# now the statement
@@ -446,6 +462,37 @@ sub rows
 	$rows;
   }
 
+# ---------------------------------------------
+# METHOD: makemap TABLE KEYCOL VALCOL
+# ---------------------------------------------
+
+=over 4
+
+=item makemap I<table> I<keycol> I<valcol>
+
+    $dbi_interface -> makemap ('components', 'id', 'price');
+    
+Produces a mapping between the values within column
+I<keycol> and column I<valcol> from I<table>.
+
+=back
+
+=cut
+
+sub makemap {
+    my ($self, $table, $keycol, $valcol) = @_;
+    my ($sth, $row, %map);
+
+    # read all rows from the specified table
+    $sth = $self -> process ("SELECT $keycol, $valcol FROM $table");
+
+    while ($row = $sth -> fetch) {
+        $map{$$row[0]} = $$row[1];
+    }
+
+    \%map;
+}
+
 # -------------------------------  
 # METHOD: serial TABLE SEQUENCE
 # -------------------------------
@@ -464,7 +511,8 @@ number for this field.
 =back
 
 =cut
-  
+#'
+
 sub serial 
   {
 	my $self = shift;
@@ -555,13 +603,19 @@ I<table>. This method accepts the following options as I<name>/I<value>
 pairs:
 
 B<order>: Which column to sort the row after.
-B<column_link>: URI for the column names. A %s will be replaced by the
-column name.
+
+B<column_link>: URI for the column names.
+A %s will be replaced by the column name.
+
+B<limit>: Maximum number of rows to display.
+
+B<where>: Display only rows matching this condition.
 
   print $dbi_interface -> view ($table,
                                 order => $cgi -> param ('order') || '',
                                 column_link => $cgi->url()
-                                . "&order=%s");
+                                . "&order=%s",
+                                where => "price > 0");
 
 =back
 
@@ -571,7 +625,8 @@ sub view
   {
 	my ($self, $table, %options) = @_;
 	my ($view, $sth, $aref);
-    my ($colsub);
+    my $colsub;
+    my ($orderstr, $condstr) = ('', '');
 
     # anonymous function for cells in top row
     $colsub = sub {
@@ -586,24 +641,28 @@ sub view
         }
         $self -> {CGI} -> td ($dispname);
     };
+    
 	# get contents of the table
-    if (exists ($options{'order'}) && $options{'order'}) {
-	    $sth = $self -> process ("SELECT * FROM $table ORDER BY $options{'order'}");
-    } else {
-	    $sth = $self -> process ("SELECT * FROM $table");
+    if ((exists ($options{'order'}) && $options{'order'})) {
+        $orderstr = " ORDER BY $options{'order'}";
     }
+    if ((exists ($options{'where'}) && $options{'where'})) {
+        $condstr = " WHERE $options{'where'}";
+    } 
+    $sth = $self -> process ("SELECT * FROM $table$condstr$orderstr");
 	
 	$view .= "<TABLE BORDER>\n";
 	# Field Names
 	$view .= $self -> {CGI}
 	  -> Tr (map {&$colsub ($_)} @{$sth->{NAME}});
-	
-	while ($aref = $sth -> fetch)
-	  {
+
+    my $rowno = 0;
+	while ($aref = $sth -> fetch) {
+        last if exists $options{'limit'} && $rowno++ >= $options{'limit'}; 
 		# add table row
 		$view .= $self -> {CGI}
 		  -> Tr (map {$self -> {CGI}
-						-> td (defined ($_) && length ($_) ? $_ : "&nbsp;")} @$aref) . "\n";
+						-> td (defined ($_) && length ($_) ? encode_entities($_) : "&nbsp;")} @$aref) . "\n";
 	  }
 	
 	$view .= "</TABLE>\n";
@@ -706,12 +765,13 @@ __END__
 
 # Autoload methods go here, and are processed by the autosplit program.
 
-=head1 AUTHOR
+=head1 AUTHORS
 
 Stefan Hornburg, racke@linuxia.net
+Dennis Schön, dschoen@rio.gt.owl.de
 
 =head1 SEE ALSO
 
-perl(1).
+perl(1), CGI(3), DBI(3), DBD::Pg(3), DBD::mysql(3), DBD::msql(3).
 
 =cut

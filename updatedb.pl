@@ -4,7 +4,7 @@
 
 # Author: Stefan Hornburg <racke@linuxia.de>
 # Maintainer: Stefan Hornburg <racke@linuxia.de>
-# Version: 0.000_04
+# Version: 0.05
 
 # This file is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the
@@ -117,6 +117,11 @@ while (<STDIN>) {
         $sth -> finish ();
     }
 
+    if ($opts{'routine'}) {
+        # filter input first
+        filter_input ($routine, $table, $fieldnames, \@values);
+    }
+    
     # check if record exists
     $sth = $dbif -> process ("SELECT $$fieldnames[0] FROM $table WHERE $$fieldnames[0] = "
                              . $dbif -> quote ($key));
@@ -135,7 +140,8 @@ while (<STDIN>) {
 
     if ($update) {
 #        print "UPDATING $.\n";
-        $dbif -> update ($table, "$$fieldnames[0] = $key", @data);
+        $dbif -> update ($table, "$$fieldnames[0] = "
+                         . $dbif->quote($key), @data);
     } else {
 #        print "INSERTING $.\n";
         $dbif -> insert ($table, @data);

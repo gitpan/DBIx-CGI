@@ -2,8 +2,9 @@ DBIx::CGI - Easy to Use DBI Interface for CGI Scripts
 *****************************************************
 
    * The homepage of `DBIx::CGI' is http://www.linuxia.net/DBIx/CGI/.
-   * The latest version (currently 0.04) is always available as 
+   * The latest version (currently 0.05) is always available as 
      http://www.linuxia.net/DBIx/CGI/DBIx-CGI.tar.gz.
+   * See the manual page for more informations.
 
 Requirements
 ************
@@ -17,13 +18,15 @@ Installation
 
 
 tar -xzf DBIx-CGI.tar.gz
-cd DBIx-CGI-0.04
+cd DBIx-CGI-0.05
 perl Makefile.PL
 make
 make install
 
 
-Author
-******
+Authors
+*******
 
 Stefan Hornburg <racke@linuxia.net>
+
+Dennis Schön <dschoen@rio.gt.owl.de>

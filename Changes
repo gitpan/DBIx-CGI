@@ -1,5 +1,47 @@
 Revision history for Perl module DBIx::CGI.
 
+* Wed Oct 20 21:01:51 1999 CEST Stefan Hornburg <racke@linuxia.net>
+
+DBIx::CGI v0.05 released
+(emptydb.pl, dausql.pl): scripts added
+(insert): memory leak fixed (thanks to Robert Barta <rho@telecoma.net>
+          for reporting this one)
+
+* Sat Oct  9 19:13:16 1999 CEST Dennis Schön <dschoen@rio.gt.owl.de>
+
+(DESTROY): commit if connection is established
+(view): new option where
+
+* Fri Oct  1 00:33:49 1999 CEST Stefan Hornburg <racke@linuxia.net>
+
+(updatedb.pl): stop script with commit
+
+* Thu Sep 30 01:04:04 1999 CEST Stefan Hornburg <racke@linuxia.net>
+
+(insert): reordering to avoid inserting of quoted NULL's
+(update): avoid inserting of quoted NULL's
+
++ Mon Sep 27 21:36:39 1999 CEST
+
+filtering fixed (wrong order of statements)
+
++ Mon Sep 27 13:20:03 1999 CEST
+
+avoid Perl warning within constructor
+(view): new option limit
+
++ Sun Sep 26 22:59:22 1999 
+
+(view): encode HTML entities
+
++ Sun Sep 26 14:11:30 1999
+
+(updatedb.pl): quote key in update condition
+
++ Sun Sep 26 09:11:23 1999 
+
+(makemap): new method
+
 + Sun Sep 26 03:30:37 1999
 
 DBIx::CGI v0.04 released
